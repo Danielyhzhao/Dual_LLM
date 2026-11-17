@@ -12,3 +12,16 @@ _webtest*.py
 _verify*.py
 *.log
 .DS_Store
+
+# ===== 实验生成产物(test/ 下的运行输出,不入库) =====
+# 注: metrics/ 为原始运行输出;精选结论图与数据已固化到 test/results/(入库)
+dualllmv2/test/runs/
+dualllmv2/test/metrics/
+
+# ===== 个人求职 / 私人资料(与项目无关,严禁提交到公开仓库) =====
+dify_prep/
+三航研究院_*.html
+以图搜图结论_*.md
+指南针医疗_*.md
+指南针医疗_*.pdf
+dual_llm_evaluation.md
