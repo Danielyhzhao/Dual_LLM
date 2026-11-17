@@ -1,0 +1,15 @@
+{
+  "name": "is_palindrome",
+  "problem_desc": "Given a string s, return True if it is a palindrome considering only alphanumeric characters and ignoring cases, else False.",
+  "reference": "def is_palindrome(s):\n    s = ''.join(c.lower() for c in s if c.isalnum())\n    return s == s[::-1]",
+  "buggy": [
+    {
+      "label": "no_lowercase",
+      "code": "def is_palindrome(s):\n    s = ''.join(c for c in s if c.isalnum())\n    return s == s[::-1]"
+    },
+    {
+      "label": "wrong_slice",
+      "code": "def is_palindrome(s):\n    s = ''.join(c.lower() for c in s if c.isalnum())\n    return s == s[1:-1]"
+    }
+  ]
+}

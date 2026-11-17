@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-08-04T03:25:12",
+  "samples": 8,
+  "bug_catch_rate": 0.625,
+  "mean_by_group": {
+    "g0_control": 0.6369047619047619,
+    "g1_tests_only": 0.875,
+    "g2_mentor_1r": 1.0,
+    "g3_mentor_3r": 1.0
+  },
+  "lift_g3_vs_g0": 0.36309523809523814
+}

@@ -1,0 +1,9 @@
+problem,variant,bug_caught,G0_control,G1_tests_only,G2_mentor_1r,G3_mentor_3r
+is_anagram,case_sensitive,False,1.00,1.00,1.00,1.00
+is_anagram,uses_set,False,1.00,1.00,1.00,1.00
+is_palindrome,no_lowercase,False,1.00,1.00,1.00,1.00
+is_palindrome,wrong_slice,True,0.43,1.00,1.00,1.00
+longest_common_subsequence,no_diagonal_add,True,0.33,0.00,1.00,1.00
+longest_common_subsequence,off_by_one_return,True,0.50,1.00,1.00,1.00
+two_sum,loop_starts_at_1,True,0.50,1.00,1.00,1.00
+two_sum,swapped_indices,True,0.33,1.00,1.00,1.00

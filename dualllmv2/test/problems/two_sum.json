@@ -1,0 +1,15 @@
+{
+  "name": "two_sum",
+  "problem_desc": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may not use the same element twice.",
+  "reference": "def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []",
+  "buggy": [
+    {
+      "label": "loop_starts_at_1",
+      "code": "def two_sum(nums, target):\n    seen = {}\n    for i in range(1, len(nums)):\n        n = nums[i]\n        if target - n in seen:\n            return [seen[target - n], i]\n        seen[n] = i\n    return []"
+    },
+    {
+      "label": "swapped_indices",
+      "code": "def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        complement = target - n\n        if complement in seen:\n            return [i, seen[complement]]\n        seen[n] = i\n    return []"
+    }
+  ]
+}

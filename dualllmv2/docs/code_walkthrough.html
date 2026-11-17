@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dual-LLM 代码辅导系统 · 逐行代码讲解</title>
+<style>
+  :root{--bg:#f6f8fc;--panel:#fff;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;
+        --accent:#4f46e5;--accent-soft:#eef2ff;--ok:#16a34a;--bad:#dc2626;--warn:#d97706;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.62;font-size:15px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;}
+  header{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:28px 32px;}
+  header h1{margin:0;font-size:24px;}
+  header p{margin:6px 0 0;opacity:.9;font-size:14px;}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 20px 80px;}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin-bottom:28px;}
+  .toc h2{margin:0 0 10px;font-size:15px;}
+  .toc a{color:var(--accent);text-decoration:none;margin-right:14px;font-size:13px;line-height:2;}
+  .toc a:hover{text-decoration:underline;}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:22px;
+          box-shadow:0 1px 3px rgba(16,24,40,.05);}
+  h2.id{font-size:20px;margin:0 0 4px;border-left:4px solid var(--accent);padding-left:12px;}
+  .role{color:var(--muted);font-size:13px;margin:0 0 14px;}
+  details{border:1px solid var(--line);border-radius:10px;margin:14px 0;overflow:hidden;}
+  summary{cursor:pointer;background:#f8fafc;padding:10px 14px;font-weight:600;font-size:13px;color:var(--accent);}
+  pre{background:#0f172a;color:#e2e8f0;padding:14px;overflow:auto;font-size:12.5px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0;max-height:460px;}
+  .note{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;
+        margin:12px 0;font-size:14px;}
+  .warnbox{background:#fffbeb;border-left:3px solid var(--warn);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13.5px;}
+  ol.ana{padding-left:22px;}
+  ol.ana li{margin:9px 0;}
+  code{background:#eef0f4;padding:1px 5px;border-radius:4px;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:#f8fafc;color:var(--muted);font-weight:600;}
+  .k{color:var(--accent);font-weight:600;}
+  .filetag{display:inline-block;font-size:11px;background:var(--accent-soft);color:var(--accent);
+           padding:2px 8px;border-radius:6px;font-weight:600;margin-left:6px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 Dual-LLM 代码辅导系统 · 逐行代码讲解</h1>
+  <p>双 LLM 对抗架构：LLM-1 分析代码并生成测试 · 确定性判卷 · 失败触发 LLM-2 给出建议与强制反思</p>
+</header>
+<div class="wrap">
+
+<div class="toc">
+  <h2>📑 目录（点击跳转）</h2>
+  <a href="#overview">总览</a>
+  <a href="#config">config.py</a>
+  <a href="#llm_backends">llm_backends.py</a>
+  <a href="#prompts">prompts.py</a>
+  <a href="#llms">llms.py</a>
+  <a href="#utils">utils.py</a>
+  <a href="#parsers">parsers.py</a>
+  <a href="#metrics">metrics.py</a>
+  <a href="#pipeline">pipeline.py</a>
+  <a href="#main">main.py</a>
+  <a href="#app">web/app.py</a>
+  <a href="#index">index.html</a>
+  <a href="#run_exp">run_experiment.py</a>
+  <a href="#run_study">run_study.py</a>
+</div>
+
+<!-- ===================== 总览 ===================== -->
+<section id="overview">
+  <h2 class="id">总览：13 个文件如何组织</h2>
+  <p class="role">一次运行经过：输入 → pipeline → LLM-1 出题 → utils 判卷 →（失败）LLM-2 建议 → 前端渲染</p>
+  <table>
+    <tr><th>文件</th><th>职责（一句话）</th><th>层级</th></tr>
+    <tr><td><code>config.py</code></td><td>加载 .env、双 DeepSeek Key、后端模式开关、延迟创建 LLM 实例</td><td>配置</td></tr>
+    <tr><td><code>llm_backends.py</code></td><td>可插拔后端：APIBackend（真实 DeepSeek）/ RuleEngineBackend（离线规则引擎）</td><td>核心引擎</td></tr>
+    <tr><td><code>prompts.py</code></td><td>LLM-1 / LLM-2 的提示词模板（langchain PromptTemplate）</td><td>提示词</td></tr>
+    <tr><td><code>llms.py</code></td><td>薄封装：把 pipeline 的调用委托给当前 backend</td><td>调用抽象</td></tr>
+    <tr><td><code>utils.py</code></td><td>确定性判卷 run_unittest + 语法检查 syntax_check + TestResult 数据类</td><td>工具</td></tr>
+    <tr><td><code>parsers.py</code></td><td>从 LLM 文本中稳健解析出 ISSUES/TESTS 与 SUGGESTIONS/REFLECTIONS</td><td>解析</td></tr>
+    <tr><td><code>metrics.py</code></td><td>OptimizationMetrics：记录每轮通过率、难度分类</td><td>指标</td></tr>
+    <tr><td><code>pipeline.py</code></td><td><b>主流程编排</b>：dual_llm_pipeline() 串起所有阶段</td><td>编排</td></tr>
+    <tr><td><code>main.py</code></td><td>命令行示例入口（默认 offline）</td><td>入口</td></tr>
+    <tr><td><code>web/app.py</code></td><td>Flask 后端：/api/run、/api/config、/api/sample、托管页面</td><td>Web</td></tr>
+    <tr><td><code>web/templates/index.html</code></td><td>纯前端工作台：输入区 + 每轮卡片 + API 调用详情</td><td>前端</td></tr>
+    <tr><td><code>test/run_experiment.py</code></td><td>实验脚本 v1：缺陷检出率 + lift（接入真实 API）</td><td>实验</td></tr>
+    <tr><td><code>test/run_study.py</code></td><td>实验脚本 v2：4 组消融对照 + 图表（当前主用）</td><td>实验</td></tr>
+  </table>
+  <div class="note">设计哲学：<b>后端可切换</b>（offline 无需 key 即可演示，api 真实对抗）。pipeline / parsers / utils 的公共契约稳定，
+  llm_backends 内部换实现不影响上层。所有"调用真实 API"的逻辑都收敛在 <code>APIBackend</code> 与 <code>config._ensure_llms()</code> 内。</div>
+</section>
+
+<!-- ===================== config.py ===================== -->
+<section id="config">
+  <h2 class="id">1. config.py <span class="filetag">配置层</span></h2>
+  <p class="role">职责：读 .env、管理两个独立 DeepSeek Key、后端模式开关、延迟初始化 ChatOpenAI。</p>
+  <details><summary>展开完整代码（127 行）</summary><pre> 1  # config.py
+ 2  # Configuration and API Setup (refactored)
+ ...
+13  import os
+20  def _load_dotenv():
+21      try:
+22          from dotenv import load_dotenv
+23          load_dotenv()
+24          return
+25      except Exception:
+26          pass
+27      env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+28      if os.path.exists(env_path):
+29          with open(env_path, "r", encoding="utf-8") as f:
+30              for raw in f:
+31                  line = raw.strip()
+32                  if not line or line.startswith("#") or "=" not in line:
+33                      continue
+34                  k, v = line.split("=", 1)
+35                  k, v = k.strip(), v.strip().strip('"').strip("'")
+36                  os.environ.setdefault(k, v)
+39  _load_dotenv()
+42  BACKEND_MODE = os.environ.get("DUAL_LLM_BACKEND", "offline").lower()
+45  PLACEHOLDER = "your_deepseek_api_key_here"
+51  LLM1_API_KEY = os.environ.get("LLM1_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+52  LLM2_API_KEY = os.environ.get("LLM2_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+55  DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+58  LLM1_MODEL = os.environ.get("LLM1_MODEL", "deepseek-chat")
+59  LLM2_MODEL = os.environ.get("LLM2_MODEL", "deepseek-chat")
+62  def _is_placeholder(k: str) -> bool:
+63      return (not k) or (k.strip() == PLACEHOLDER)
+66  def mask_key(k: str) -> str:
+67      """仅保留标准前缀与末 4 位...""
+73      if not k: return ""
+75      if len(k) <= 7: return "***"
+78      return f"sk-…{k[-4:]}"
+82  KEY1_IS_PLACEHOLDER = _is_placeholder(LLM1_API_KEY)
+83  KEY2_IS_PLACEHOLDER = _is_placeholder(LLM2_API_KEY)
+84  KEY1_MASK = mask_key(LLM1_API_KEY)
+85  KEY2_MASK = mask_key(LLM2_API_KEY)
+88  llm1 = None
+89  llm2 = None
+91  _initialized = False
+94  def _ensure_llms():
+96      global llm1, llm2, _initialized
+97      if _initialized: return llm1, llm2
+99      if _is_placeholder(LLM1_API_KEY):
+100         raise RuntimeError("LLM-1 的 DeepSeek API Key 未配置...")
+104     if _is_placeholder(LLM2_API_KEY):
+105         raise RuntimeError("LLM-2 的 DeepSeek API Key 未配置...")
+109     from langchain_openai import ChatOpenAI
+112     llm1 = ChatOpenAI(model=LLM1_MODEL, temperature=0.2,
+115         openai_api_key=LLM1_API_KEY, openai_api_base=DEEPSEEK_BASE_URL)
+119     llm2 = ChatOpenAI(model=LLM2_MODEL, temperature=0.3,
+122         openai_api_key=LLM2_API_KEY, openai_api_base=DEEPSEEK_BASE_URL)
+125     _initialized = True
+126     return llm1, llm2</pre></details>
+  <ol class="ana">
+    <li><span class="k">第 13 行</span> 只导入 <code>os</code>，刻意不依赖第三方库，保证离线可跑。</li>
+    <li><span class="k">第 20-39 行 _load_dotenv()</span> 优先用 <code>python-dotenv</code> 加载 .env；若未安装，则手动解析 .env 文件，把 <code>KEY=VALUE</code> 写入 <code>os.environ</code>。<b>关键</b>：用 <code>os.environ.setdefault</code>（第 36 行），不覆盖已存在的环境变量，优先级让位于系统环境。</li>
+    <li><span class="k">第 42 行 BACKEND_MODE</span> 从环境变量读，默认 <code>offline</code>。这是整个系统的"总开关"——决定用真实 API 还是本地规则引擎。</li>
+    <li><span class="k">第 45 行 PLACEHOLDER</span> = <code>"your_deepseek_api_key_here"</code>，即 .env.example 里的占位字符串。</li>
+    <li><span class="k">第 51-52 行</span> 两个 LLM 各自独立的 Key：优先读 <code>LLM1_API_KEY</code> / <code>LLM2_API_KEY</code>，没有则降级用统一的 <code>DEEPSEEK_API_KEY</code>。<b>这是"双账户对抗"的基础</b>——LLM-1 与 LLM-2 走不同配额/账户。</li>
+    <li><span class="k">第 58-59 行</span> 两个模型可不同（如 LLM-2 用 <code>deepseek-reasoner</code> 增强对抗性）。</li>
+    <li><span class="k">第 62-63 行 _is_placeholder</span> 判断 Key 是否为空或等于占位符，用于后续给出清晰提示而非难懂的 401。</li>
+    <li><span class="k">第 66-78 行 mask_key</span> <b>安全要点</b>：只展示 <code>sk-…末4位</code>，绝不泄露任何密钥字节。这是之前你要求"完全不显示 Key"后的实现——前端只用 <code>KEY1_MASK</code> 显示指纹，不显示完整 Key。</li>
+    <li><span class="k">第 82-85 行</span> 模块导入时即计算占位符标记与掩码，供 web/app.py 的 <code>/api/config</code> 与前端徽标使用。</li>
+    <li><span class="k">第 94-126 行 _ensure_llms()</span> <b>延迟初始化</b>：只有 api 模式才真正创建 ChatOpenAI 实例（需要网络 + Key）。<code>_initialized</code> 保证只创建一次；若 Key 是占位符则抛 RuntimeError，引导用户去配 .env 或切 offline。</li>
+    <li><span class="k">第 112-124 行</span> LLM-1 温度 0.2（更稳定）、LLM-2 温度 0.3（略活泼），两者 <code>openai_api_base</code> 都指向 DeepSeek 的 OpenAI 兼容接口。</li>
+  </ol>
+</section>
+
+<!-- ===================== llm_backends.py ===================== -->
+<section id="llm_backends">
+  <h2 class="id">2. llm_backends.py <span class="filetag">核心引擎 · 606 行</span></h2>
+  <p class="role">职责：定义可插拔后端。RuleEngineBackend（离线，无需 Key）用 oracle 题库 + 静态启发式；APIBackend（真实 DeepSeek）保留原始 prompts 格式。</p>
+
+  <h3>2.1 Oracle 参考解注册表（第 41-206 行）</h3>
+  <details><summary>展开 oracle 与用例生成器</summary><pre>41  def _levenshtein(a,b): ...          # 编辑距离参考解
+57  def _ref_twosum(nums,target): ...    # two sum 参考解
+66  def _ref_palindrome(s): return s==s[::-1]
+70  def _ref_anagram(a,b): return sorted(a)==sorted(b)
+74  def _ref_lcs(a,b): ...               # 最长公共子序列 DP 参考解
+83  def _ref_reverse(x): ...             # 整数反转（含溢出保护）
+89  def _ref_climb(n): ...               # 爬楼梯 DP 参考解
+98  # 各 _cases_xxx() 返回 [(args, reason), ...] 边界+通用用例
+177 _ORACLES = {                         # 以"方法名(去非字母)"为键
+179    "twosum": (_ref_twosum, _cases_twosum),
+184    "ispalindrome": (_ref_palindrome, _cases_str1),
+...
+193 }
+197 _ORACLE_KEYWORDS = {                  # 以"题述关键词"为键
+199    "two sum": (_ref_twosum, _cases_twosum),
+203    "longest common subsequence": (_ref_lcs, _cases_lcs),
+...
+206 }</pre></details>
+  <ol class="ana">
+    <li>这些是<b>内置正确答案（oracle）</b>。离线模式下，"考官"没有真 LLM，就用这些参考解算出每个测试用例的 <code>expected</code> 值，再与学生代码输出比对——一致则测试通过，不一致则失败（从而触发 LLM-2 阶段）。</li>
+    <li><span class="k">_ORACLES</span> 用"函数名小写去符号"做键（如 <code>ispalindrome</code>），<code>_pick_oracle</code>（第 239 行）先按学生代码里的方法名匹配，再按题述关键词（<code>_ORACLE_KEYWORDS</code>）匹配。</li>
+    <li>每个 <code>_cases_xxx</code> 生成 5~7 个用例，刻意覆盖边界：空串/单字符/相同/经典/交叉（如 LCS 的 <code>("abc","acb")</code> 交叉=2）。reason 字段会写进测试，引导学生反思"为什么这个用例重要"。</li>
+  </ol>
+
+  <h3>2.2 静态启发式（第 260-375 行）</h3>
+  <details><summary>展开 _heuristic_issues</summary><pre>313 def _heuristic_issues(code: str) -> list:
+316     tree = ast.parse(code)            # 解析为 AST
+320     for node in ast.walk(tree):
+322         if isinstance(node, ast.ExceptHandler):
+323             if node.type is None:
+324                 issues.append("Avoid bare `except:` ...")
+325             elif node.type.id == "Exception":
+326                 issues.append("Catching broad `Exception` ...")
+328         if isinstance(node, ast.While):
+329             # 检查 while 条件变量是否在循环体内被重新赋值 -> 死循环风险
+341                 issues.append("`while` loop ... risk of infinite loop.")
+343         if isinstance(node, ast.Compare) and float 常量比较:
+346             issues.append("Avoid `==` on floats; use math.isclose()")
+348     for node in ast.walk(tree):
+349         if isinstance(node, ast.FunctionDef):
+351             if 默认参数是 list/dict/set:
+353                 issues.append("Mutable default argument ...")
+355             if 递归且缺 guard:
+357                 issues.append("Recursive function may lack a base case")
+359             if 部分路径无返回:
+360                 issues.append("may not return a value")
+362             if 嵌套循环 / list.index 在循环内:
+363                 issues.append("O(n^2) ...")</pre></details>
+  <ol class="ana">
+    <li>用 Python 的 <code>ast</code> 模块把代码解析成抽象语法树，然后遍历节点做静态检查——这是"离线考官"的智力来源之一。</li>
+    <li>覆盖 8+ 类常见坏味：裸 <code>except</code>、宽异常、死循环风险、浮点 <code>==</code>、可变默认参数、递归缺基线、部分路径无返回、二次复杂度隐患。</li>
+    <li><span class="k">_has_guard / _ends_with_return / _may_miss_return / _is_dp / _has_quadratic_hint</span> 是辅助判定函数（第 260-310 行），如 <code>_is_dp</code> 识别 <code>dp[i][j]</code> 这种正当的二维递推，避免把它误判成 O(n²) 隐患。</li>
+    <li><span class="k">_analytical_issues()</span>（第 368 行）：当结构层面没问题时，返回 4 条"分析型"建议（边界覆盖/基线初始化/复杂度/返回值一致性），模拟 LLM-1 的深度审查，保证离线也有内容可展示。</li>
+  </ol>
+
+  <h3>2.3 RuleEngineBackend（第 399-528 行）</h3>
+  <details><summary>展开 RuleEngineBackend 关键方法</summary><pre>399 class RuleEngineBackend(BaseBackend):
+405     def llm1_text(self, code, problem_desc) -> str:
+406         t0 = time.time()
+407         issues = _heuristic_issues(code)
+408         issues_text = "\n".join(issues) if issues else "\n".join(_analytical_issues())
+409         tests_text = self._generate_tests(code, problem_desc)
+410         text = f"ISSUES:\n{issues_text}\n\nTESTS:\n{tests_text}"
+411         self.last_call = {role, model:"offline", prompt, response, elapsed_ms}
+418         return text
+440     def _generate_tests(self, code, problem_desc):
+441         meta = _extract_callable(code)
+442         pick = _pick_oracle(meta, problem_desc) if meta else None
+443         if pick: return self._format_oracle_tests(meta, pick[0], pick[1])
+445         return self._generic_tests(meta, problem_desc)
+447     def _generic_tests(self, meta, problem_desc):
+453         # 按参数名推断类型(str/nums/target)，生成确定性+多样输入测试
+464         # 未注册 oracle 时，生成"同输入两次结果应一致"的鲁棒性测试
+490     def llm2_text(self, code, problem_desc, issues, failures) -> str:
+491         suggestions = self._build_suggestions(issues, failures)
+493         reflections = self._build_reflections(failures)
+494         text = f"SUGGESTIONS:\n{suggestions}\n\nREFLECTIONS:\n{reflections}"</pre></details>
+  <ol class="ana">
+    <li><span class="k">llm1_text</span> 返回的字符串格式与真实 LLM 完全一致：<code>ISSUES:\n...\n\nTESTS:\n...</code>。这是"可插拔"的关键——上层 parsers 不关心是人是机器生成的。</li>
+    <li><span class="k">_generate_tests</span>：先尝试按方法名/关键词匹配 oracle，命中则调用 <code>_format_oracle_tests</code> 生成"有正确答案"的断言测试；<b>未命中</b>（题没注册）时降级到 <code>_generic_tests</code>，按参数名推断类型生成"确定性/鲁棒性"测试（同输入两次结果应一致）。</li>
+    <li><span class="k">_build_suggestions / _build_reflections</span>：LLM-2 离线版，基于 failures 文本做关键词匹配（如含 "empty" 就建议处理空输入），保证失败时能给出可执行的建议与反思问题。</li>
+    <li><b>last_call 元数据</b>（第 411、495 行）：记录 role/model/prompt/response/耗时，pipeline 透传给前端，用于直观证明"是否真的调用了 API"（offline 会显示 model:"offline" + 几乎 0ms）。</li>
+  </ol>
+
+  <h3>2.4 APIBackend（第 535-587 行）—— 真实 DeepSeek</h3>
+  <details><summary>展开 APIBackend</summary><pre>535 class APIBackend(BaseBackend):
+539     def _invoke(self, llm, prompt, model=""):
+540         from langchain_core.messages import HumanMessage
+541         t0 = time.time()
+543         resp = llm.invoke([HumanMessage(content=prompt)]).content
+544         except Exception as e:
+546             if "402" in msg: raise RuntimeError("DeepSeek 账户余额不足...")
+551             if "401" in msg: raise RuntimeError("API Key 无效或未授权...")
+555             raise RuntimeError(f"调用 DeepSeek API 失败({model}):{msg}")
+557         return resp, elapsed
+559     def llm1_text(self, code, problem_desc):
+560         from prompts import llm1_prompt
+562         llm1, _ = config._ensure_llms()
+563         formatted = llm1_prompt.format(code=code, problem_desc=problem_desc)
+564         resp, elapsed = self._invoke(llm1, formatted, config.LLM1_MODEL)
+565         self.last_call = {role:"LLM-1 (分析者/考官)", model:LLM1_MODEL, ...}
+572         return resp
+574     def llm2_text(self, code, problem_desc, issues, failures):
+575         from prompts import llm2_prompt
+577         _, llm2 = config._ensure_llms()
+578         formatted = llm2_prompt.format(...)
+579         resp, elapsed = self._invoke(llm2, formatted, config.LLM2_MODEL)
+587         return resp</pre></details>
+  <ol class="ana">
+    <li><span class="k">_invoke</span> 是唯一的真实网络调用点。<b>强容错</b>：区分 402（余额不足，代码与 Key 都没错）、401（Key 无效）、其他（网络/限流），给中文友好提示而不是裸异常。</li>
+    <li><span class="k">llm1_text / llm2_text</span> 与 RuleEngineBackend 同名同签名，区别只是：这里用 <code>config._ensure_llms()</code> 拿到真实 ChatOpenAI 实例，用 <code>prompts.py</code> 的模板格式化 prompt，然后 <code>_invoke</code> 调 DeepSeek。</li>
+    <li>两个方法分别用 <code>LLM1_MODEL</code> / <code>LLM2_MODEL</code>——真正的"双模型对抗"就在这里。</li>
+  </ol>
+
+  <h3>2.5 工厂 get_backend（第 594-605 行）</h3>
+  <pre>597 def get_backend() -> BaseBackend:
+598     global _backend_instance
+599     if _backend_instance is not None: return _backend_instance
+601     if config.BACKEND_MODE == "api": _backend_instance = APIBackend()
+603     else: _backend_instance = RuleEngineBackend()
+605     return _backend_instance</pre>
+  <ol class="ana"><li>全局单例：读 <code>config.BACKEND_MODE</code> 决定返回哪个实现。pipeline、llms、实验脚本都通过它获取后端，<b>上层完全不需要知道当前是 offline 还是 api</b>。</li></ol>
+</section>
+
+<!-- ===================== prompts.py ===================== -->
+<section id="prompts">
+  <h2 class="id">3. prompts.py <span class="filetag">提示词</span></h2>
+  <p class="role">职责：LLM-1（分析者/考官）和 LLM-2（对抗者/导师）的提示词模板。</p>
+  <details><summary>展开 prompts.py</summary><pre> 7  from langchain_core.prompts import PromptTemplate
+10  llm1_prompt = PromptTemplate(
+11      input_variables=["code", "problem_desc"],
+12      template="""Analyze the code line by line for logical errors...
+18        ISSUES:
+19        - Line X-Y: [Issue 1, ...]
+25        TESTS:
+26        self.assertEqual(func(args), expected)  # Reason: [Empty boundary]
+33        Requirements:
+34        1. AT LEAST 5 ISSUES across correctness/edge/efficiency/readability/robustness
+37        2. AT LEAST 6 TESTS covering boundaries + 2 general cases; use a reference
+39           implementation to compute expected (do NOT guess).
+40        3. Every ISSUE MUST include line numbers
+41        4. TESTS MUST be valid unittest asserts
+42        5. Each test Reason encourages reflection on WHY
+43        """)
+48  llm2_prompt = PromptTemplate(
+49      input_variables=["code", "problem_desc", "issues", "failures"],
+50      template="""You are an ADVERSARIAL code reviewer (LLM-2)...
+51        Student Code: {code}
+57        Issues found by LLM-1: {issues}
+58        Failed Tests: {failures}
+60        SUGGESTIONS:
+62        - For Line X-Y: [Actionable suggestion WITHOUT giving full code]
+65        REFLECTIONS:
+66        - [A pointed question that exposes a likely misconception]
+69        Requirements:
+70        1. Suggestions ONLY (no full code; promote thinking). At least 2.
+73        3. At least 2 reflection questions
+74        4. If LLM-1's issues/tests look incomplete or wrong, say so explicitly
+75        5. Encourage re-deriving expected value by hand
+76        """)</pre></details>
+  <ol class="ana">
+    <li><span class="k">llm1_prompt</span> 强制结构化输出：<code>ISSUES</code>（≥5 条，跨正确性/边界/效率/可读/鲁棒 5 个维度，必须带行号）+ <code>TESTS</code>（≥6 条 unittest 断言，必须用一个"参考实现"算 expected，<b>禁止瞎猜</b>）。reason 字段引导学生反思"为什么这个用例重要"。</li>
+    <li><span class="k">llm2_prompt</span> 把 LLM-2 设定为"对抗式评审"：既要给学生可执行建议（<b>不给完整代码</b>，逼学生自己想），又要审视 LLM-1 的结论是否扎实；并要求产出 ≥2 条反思问题，暴露学生的潜在误解。</li>
+    <li>两个模板都是 <code>langchain_core.prompts.PromptTemplate</code>，用 <code>.format(...)</code> 填充变量。注意 LLM-2 的 prompt 注入了 LLM-1 的 issues 和失败测试——这就是"对抗"的纽带。</li>
+  </ol>
+</section>
+
+<!-- ===================== llms.py ===================== -->
+<section id="llms">
+  <h2 class="id">4. llms.py <span class="filetag">调用抽象 · 21 行</span></h2>
+  <p class="role">职责：极薄的适配层，把 pipeline 的语义调用委托给当前 backend。</p>
+  <details><summary>展开 llms.py</summary><pre>10  from llm_backends import get_backend
+13  def llm1_direct_call(code, problem_desc) -> str:
+14      return get_backend().llm1_text(code, problem_desc)
+18  def llm2_direct_call(code, problem_desc, issues, failures) -> str:
+20      return get_backend().llm2_text(code, problem_desc, issues, failures)</pre></details>
+  <ol class="ana">
+    <li>仅 21 行，是"依赖倒置"的体现：pipeline 只调用 <code>llm1_direct_call / llm2_direct_call</code>，不直接 import APIBackend 或 RuleEngineBackend。</li>
+    <li>通过 <code>get_backend()</code> 拿到单例，offline/api 切换对 pipeline 透明。公共契约稳定，因此当初重构（从旧实现换成可插拔后端）时 <b>pipeline.py / parsers.py 完全无需改动</b>。</li>
+  </ol>
+</section>
+
+<!-- ===================== utils.py ===================== -->
+<section id="utils">
+  <h2 class="id">5. utils.py <span class="filetag">确定性工具 · 90 行</span></h2>
+  <p class="role">职责：run_unittest（隔离执行判卷）+ syntax_check + TestResult 数据类。这是"确定性"的保证。</p>
+  <details><summary>展开 utils.py</summary><pre>18  @dataclass
+19  class TestResult:
+20      passed: bool
+21      summary: str
+22      failures: str
+23      pass_rate: float
+26  def run_unittest(code: str, test_cases: str) -> TestResult:
+37      test_lines = [ln for ln in test_cases.splitlines()
+38          if ln.strip() and not ln.strip().startswith("#")]
+41      methods_src = "\n".join(
+42          f"    def test_case_{idx}(self):\n        {ln}"
+43          for idx, ln in enumerate(test_lines))
+44      test_class = f"""
+45  import unittest
+46  {code}
+49  class TestCode(unittest.TestCase):
+50  {methods_src}
+51  """
+52      f = io.StringIO(); err = io.StringIO()
+54      with redirect_stdout(f), redirect_stderr(err):
+55          exec_globals = {}
+56          exec(test_class, exec_globals)          # 隔离命名空间执行
+58          loader = unittest.TestLoader()
+59          suite = unittest.TestSuite()
+61          for name, obj in exec_globals.items():
+62              if isinstance(obj, type) and issubclass(obj, unittest.TestCase):
+63                  suite.addTests(loader.loadTestsFromTestCase(obj))
+68          runner = unittest.TextTestRunner(stream=f, verbosity=2)
+69          result = runner.run(suite)
+71          tests_run = result.testsRun
+72          failures_num = len(result.failures) + len(result.errors)
+73          passed = failures_num == 0
+74          pass_rate = (tests_run - failures_num) / tests_run if tests_run > 0 else 0.0
+75          summary = f"Tests: {tests_run}, Passed: {tests_run-failures_num}, Failed: {failures_num}"
+76          failures = "\n".join([str(fl) for fl in result.failures + result.errors])
+77          return TestResult(passed, summary+"\n"+output, failures, pass_rate)
+78      except Exception as e:
+79          return TestResult(False, f"Test execution error: {e}", ..., 0.0)
+83  def syntax_check(code: str) -> str:
+85      try: ast.parse(code); return "No syntax errors."
+87      except SyntaxError as e: return f"Syntax error on line {e.lineno}: {e}"</pre></details>
+  <ol class="ana">
+    <li><span class="k">TestResult</span> 是统一返回结构：<code>passed</code>（是否全过）、<code>summary</code>（如 "Tests: 6, Passed: 5, Failed: 1"，pipeline 用正则解析它）、<code>failures</code>（失败用例文本，喂给 LLM-2）、<code>pass_rate</code>（通过率，metrics 记录）。</li>
+    <li><span class="k">第 37-43 行</span> <b>关键改进</b>：把每条 assert 生成成独立的 <code>test_case_{idx}</code> 方法。原实现把所有 assert 塞进一个方法，unittest 只计 1 个测试且首个失败就停。现在能逐条计数、逐条隔离失败，<code>pass_rate</code> 才有意义。</li>
+    <li><span class="k">第 44-57 行</span> 把学生代码 + 生成的测试方法拼成完整测试类，用 <code>exec(..., exec_globals)</code> 在<b>独立全局命名空间</b>执行——避免学生代码污染主程序、也避免多次运行互相干扰。</li>
+    <li><span class="k">第 54 行</span> <code>redirect_stdout/stderr</code> 捕获 unittest 输出；<code>try/except</code>（第 78 行）把任何执行异常也包成 TestResult（passed=False），保证单个坏用例不会让整条流水线崩。</li>
+    <li><span class="k">syntax_check</span> 用 <code>ast.parse</code> 提前抓语法错误，pipeline 在调 LLM-1 前就拦截（见 pipeline 第 39-42 行）。</li>
+  </ol>
+</section>
+
+<!-- ===================== parsers.py ===================== -->
+<section id="parsers">
+  <h2 class="id">6. parsers.py <span class="filetag">输出解析 · 105 行</span></h2>
+  <p class="role">职责：把 LLM 返回的自由文本稳健解析成结构化 (issues, tests) 与 (suggestions, reflections)。</p>
+  <details><summary>展开 parsers.py</summary><pre>18  def _strip_fences(text):            # 去掉 ```lang ... ``` 围栏
+22      text = re.sub(r"```[a-zA-Z0-9_]*\s*", "", text); text=text.replace("```","")
+27  def _extract_assert_lines(text):    # 抽取 assert/self.xxx 行，拼成合法 Python
+34      if re.search(r"self\.assert|assert\s|...", s) ...
+40          ast.parse("\n".join(kept))   # 校验能编译才采纳
+47  def _find_section(output, labels):  # 按候选标题(大小写不敏感)截取区间
+52      pattern = rf"(?:^|\n)(?:{alt})\s*[:\-]\s*(.*?)(?=\n[A-Z][A-Z_ ]*[:\-]|\Z)"
+59  def parse_llm1_output(output) -> (issues, tests):
+65      issues_raw = _find_section(output, ["ISSUES","ISSUE","PROBLEMS","FINDINGS"])
+73      tests_raw = _find_section(output, ["TESTS","TEST CASES","TEST","EXAMPLES",...])
+76      tests = _extract_assert_lines(tests_raw)
+79      tests = _extract_assert_lines(output)   # 最后手段:扫整段
+81      if not tests: raise ValueError("Could not find/parse any TESTS")
+83      return issues, tests
+86  def parse_llm2_output(output) -> (suggestions, reflections):
+91      sugg_raw = _find_section(output, ["SUGGESTIONS","ADVICE","RECOMMENDATIONS"])
+92      refl_raw = _find_section(output, ["REFLECTIONS","QUESTIONS",...])
+97      if not suggestions: suggestions = "默认建议..."   # 兜底
+100     if not reflections: reflections = "默认反思..."     # 兜底</pre></details>
+  <ol class="ana">
+    <li><span class="k">_strip_fences</span> 兼容模型偶尔用 markdown 代码块包裹输出的情况。</li>
+    <li><span class="k">_extract_assert_lines</span> 只挑 <code>self.assertEqual</code> 这类断言行，并用 <code>ast.parse</code> 校验拼出来的片段能编译——避免把垃圾当测试。</li>
+    <li><span class="k">_find_section</span> 用正则按标题（ISSUES/TESTS/...）截取区块，兼容多种写法。<b>这是强容错的核心</b>：DeepSeek 偶发格式偏差时仍能解析，不让流水线崩。</li>
+    <li><span class="k">parse_llm1_output</span> 三级兜底：按标题取 TESTS → 失败则扫描整段 assert 行 → 再失败则抛错（流水线捕获后返回友好提示）。</li>
+    <li><span class="k">parse_llm2_output</span> 对空建议/反思有中文兜底文案，保证前端永远有内容可渲染（即使模型没按要求给）。</li>
+  </ol>
+</section>
+
+<!-- ===================== metrics.py ===================== -->
+<section id="metrics">
+  <h2 class="id">7. metrics.py <span class="filetag">指标 · 38 行</span></h2>
+  <p class="role">职责：OptimizationMetrics 记录每轮通过率、分类难度。</p>
+  <details><summary>展开 metrics.py</summary><pre>11  class OptimizationMetrics:
+12      def __init__(self, problem_desc):
+13          self.pass_rates = []
+14          self.difficulty = self.classify_difficulty(problem_desc)
+16      def classify_difficulty(self, problem_desc):
+18          if "easy" in problem_desc.lower(): return "easy"
+20          elif "hard" in problem_desc.lower(): return "hard"
+22          return "medium"
+24      def track_pass_rate(self, test_result):
+25          self.pass_rates.append(test_result.pass_rate)
+27      def get_stats(self) -> dict:
+28          if not self.pass_rates: return {"improvement":0.0}
+30          improvement = self.pass_rates[-1] - self.pass_rates[0]
+31          return {"initial_pass_rate":..., "final_pass_rate":...,
+34                  "improvement":improvement, "difficulty":...}</pre></details>
+  <ol class="ana">
+    <li>极简：<code>track_pass_rate</code> 把每轮 <code>pass_rate</code> 追加进列表；<code>get_stats</code> 算出初始/最终/提升幅度和难度。</li>
+    <li><span class="k">classify_difficulty</span> 是占位实现：仅靠题述里是否含 "easy"/"hard" 关键词判断——注释里也标明这是 placeholder，后续可换 NLP 分类。</li>
+    <li>前端 index.html 的"改进幅度""难度"两个指标卡，数据就来自 <code>get_stats()</code> 返回的 <code>metrics</code>。</li>
+  </ol>
+</section>
+
+<!-- ===================== pipeline.py ===================== -->
+<section id="pipeline">
+  <h2 class="id">8. pipeline.py <span class="filetag">主流程编排 · 100 行</span></h2>
+  <p class="role">职责：dual_llm_pipeline() 把"出题→判卷→建议→反思"串成确定性流水线，是系统的心脏。</p>
+  <details><summary>展开 pipeline.py</summary><pre>20  def dual_llm_pipeline(student_code, problem_desc, student_reflection="", max_iterations=3):
+27      current_code = student_code
+28      history = []
+29      metrics = OptimizationMetrics(problem_desc)
+30      backend = get_backend()
+32      for iteration in range(max_iterations):
+33          if iteration > 0 and not student_reflection:
+34              return {"final":"Reflection required before next iteration.", ...}
+39          syntax_result = syntax_check(current_code)
+40          if syntax_result.lower().startswith("syntax error"):
+41              history.append({...}); return {"final": syntax_result, ...}
+45          try: llm1_output = llm1_direct_call(current_code, problem_desc)
+47          except Exception as e: return {"final": f"LLM-1 call failed: {e}", ...}
+50          llm1_call = backend.last_call     # 捕获本次元数据
+52          issues, test_cases = parse_llm1_output(llm1_output)
+57          t_test = time.time()
+58          test_result = run_unittest(current_code, test_cases)
+59          test_ms = (time.time()-t_test)*1000
+60          metrics.track_pass_rate(test_result)
+62          history.append({iteration, issues, test_result.summary,
+66              reflection_required: not test_result.passed,
+67              llm1_call, test_duration_ms})
+71          if test_result.passed:
+72              return {"final":"All logical issues resolved.", history, metrics}
+76          try: llm2_output = llm2_direct_call(current_code, problem_desc, issues, test_result.failures)
+77          except Exception as e: return {"final": f"LLM-2 call failed: {e}", ...}
+81          llm2_call = backend.last_call
+83          suggestions, reflections = parse_llm2_output(llm2_output)
+87          history[-1]["suggestions"] = suggestions
+88          history[-1]["reflections"] = reflections
+89          history[-1]["llm2_call"] = llm2_call
+92          return {"final":"Review suggestions and provide reflection to continue.",
+94              "reflection_required": True}
+99      return {"final":"Max iterations reached.", history, metrics}</pre></details>
+  <ol class="ana">
+    <li><span class="k">第 32-33 行</span> 伦理约束：只有第 1 轮（iteration==0）允许无反思直接跑；<b>第 2 轮起必须提供 student_reflection</b>，否则直接返回"需要先反思"。这是"强制学生反思"机制的实现点。</li>
+    <li><span class="k">第 39-42 行</span> 先语法检查，有语法错直接返回，避免浪费 LLM 调用（注意用 <code>startswith("syntax error")</code> 精确判断，避免 "No syntax errors." 里的 "error" 被误判）。</li>
+    <li><span class="k">第 45-54 行</span> 阶段①：调 LLM-1 出题，<b>任何异常都兜底返回</b>（不让单次调用失败崩掉整条流水线）。<code>backend.last_call</code>（第 50 行）捕获调用元数据（角色/模型/prompt/返回/耗时），供前端"查看 API 调用详情"。</li>
+    <li><span class="k">第 57-60 行</span> 阶段②：确定性判卷，记录测试耗时。这正是系统"确定性"的体现——测试执行不依赖 LLM、结果可复现。</li>
+    <li><span class="k">第 71-73 行</span> 若测试全过，直接返回成功（无需 LLM-2，省调用也符合"对抗只在失败时触发"）。</li>
+    <li><span class="k">第 76-89 行</span> 阶段③：仅当失败时调 LLM-2，把 issues + failures 喂给它，解析出 suggestions/reflections，挂到当前轮 history。注意这里<b>不自动改代码</b>——只给建议，要求学生自己改（"No auto-replacement"）。</li>
+    <li><span class="k">第 92-97 行</span> 返回 <code>reflection_required=True</code>，前端据此弹出"反思面板"，等学生输入反思后再调下一轮。这就是"双 LLM + 强制反思"闭环的衔接点。</li>
+    <li><b>返回值结构</b>：<code>{final, history, metrics, [reflection_required]}</code>，web/app.py 直接 jsonify 给前端。</li>
+  </ol>
+</section>
+
+<!-- ===================== main.py ===================== -->
+<section id="main">
+  <h2 class="id">9. main.py <span class="filetag">CLI 入口 · 43 行</span></h2>
+  <p class="role">职责：命令行示例（默认 offline），跑一份 Edit Distance 样例代码。</p>
+  <details><summary>展开 main.py</summary><pre> 7  from pipeline import dual_llm_pipeline
+ 8  import config
+11  if __name__ == "__main__":
+13      sample_code = """class Solution:
+14          def minDistance(self, word1, word2) -> int: ... """  # LeetCode 72
+31      problem_desc = "LeetCode 72. Edit Distance: ..."
+33      print(f"[backend mode] {config.BACKEND_MODE}")
+34      result = dual_llm_pipeline(sample_code, problem_desc)
+36      print(json.dumps(result, indent=2, ensure_ascii=False))
+38      # 交互模式示例(接入网页后由前端驱动):
+39      # while result.get("reflection_required"):
+41      #     student_reflection = input(...)
+42      #     revised_code = input(...)
+43      #     result = dual_llm_pipeline(revised_code, problem_desc, student_reflection)</pre></details>
+  <ol class="ana">
+    <li>纯演示入口：内置一份 Edit Distance 样例，直接调 <code>dual_llm_pipeline</code> 并打印 JSON 结果。</li>
+    <li>第 38-43 行注释展示了"交互模式"的用法：当 <code>reflection_required</code> 为真，读学生反思和修订代码，再调下一轮——这正是网页前端的循环逻辑。</li>
+  </ol>
+</section>
+
+<!-- ===================== web/app.py ===================== -->
+<section id="app">
+  <h2 class="id">10. web/app.py <span class="filetag">Flask 后端 · 82 行</span></h2>
+  <p class="role">职责：提供 /api/run、/api/config、/api/sample，并托管 index.html。</p>
+  <details><summary>展开 web/app.py</summary><pre> 9  BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+11  sys.path.insert(0, BASE_DIR)         # 让 web 能 import 上级的 pipeline/config
+13  from flask import Flask, request, jsonify, render_template
+14  from pipeline import dual_llm_pipeline
+15  import config
+17  app = Flask(__name__, template_folder="templates", static_folder="static")
+19  SAMPLE_CODE = '''class Solution:
+20      def minDistance(self, word1, word2) -> int: ... '''
+36  SAMPLE_DESC = "LeetCode 72. Edit Distance: ..."
+39  @app.route("/")
+41      return render_template("index.html")
+44  @app.route("/api/sample")
+46      return jsonify({"code": SAMPLE_CODE, "problem_desc": SAMPLE_DESC})
+49  @app.route("/api/config")
+52      return jsonify({backend_mode, llm1_model, llm2_model,
+56          llm1_key_set: bool(LLM1_API_KEY) and not KEY1_IS_PLACEHOLDER,
+57          llm2_key_set: bool(LLM2_API_KEY) and not KEY2_IS_PLACEHOLDER})
+61  @app.route("/api/run", methods=["POST"])
+63      data = request.get_json(force=True, silent=True) or {}
+64      code = data.get("code",""); problem_desc = data.get("problem_desc","")
+66      reflection = data.get("student_reflection","")
+68      max_iter = int(data.get("max_iterations", 3))
+71      result = dual_llm_pipeline(code, problem_desc, reflection, max_iter)
+72      result["backend_mode"] = config.BACKEND_MODE
+73      result["llm1_model"] = ...; result["llm2_model"] = ...
+75      return jsonify(result)
+78  if __name__ == "__main__":
+79      port = int(os.environ.get("PORT", 5000))
+81      app.run(host="0.0.0.0", port=port, debug=False)</pre></details>
+  <ol class="ana">
+    <li><span class="k">第 9-11 行</span> 把项目根目录加进 <code>sys.path</code>，因为 app.py 在 <code>web/</code> 子目录，需要能 import 上级的 <code>pipeline / config</code> 等。</li>
+    <li><span class="k">/api/config</span>（第 49 行）<b>安全要点</b>：只返回 <code>llm1_key_set / llm2_key_set</code> 布尔和掩码状态，<b>绝不返回任何 Key 字符串</b>——前端据此显示"LLM1·已连接✓"徽标，不泄露指纹之外的信息。</li>
+    <li><span class="k">/api/run</span>（第 61 行）是核心接口：接收前端 JSON（code/problem_desc/student_reflection/max_iterations），调 <code>dual_llm_pipeline</code>，把 backend_mode 和模型名附加进结果再返回。前端拿到的就是 pipeline 的 <code>{final, history, metrics}</code>。</li>
+    <li><span class="k">第 68-70 行</span> 对 max_iterations 做容错转换，非法值回落到 3。</li>
+  </ol>
+</section>
+
+<!-- ===================== index.html ===================== -->
+<section id="index">
+  <h2 class="id">11. web/templates/index.html <span class="filetag">前端 · 370 行</span></h2>
+  <p class="role">职责：纯前端工作台。左输入区、右结果区（指标卡 + 每轮卡片 + API 调用详情 + 反思面板）。</p>
+  <details><summary>展开 index.html（结构节选）</summary><pre> 7  <style> ... CSS 变量与全部样式（卡片/流程节点/深色代码块/动画）...
+86  <body>
+87  <header> 🧠 Dual-LLM 代码辅导系统 · 状态徽标(backendBadge)
+95  <div class="wrap"> 两列网格: 输入区 | 结果区
+98      <label>问题描述</label><textarea id="problem">
+102     <label>学生代码</label><textarea id="code">
+105     <select id="maxIter">1/2/3/4/5</select>
+114     <button id="runBtn">▶ 运行 Pipeline</button>
+145     <div id="metrics"> 初始/最终通过率 + 改进幅度 + 难度 四个指标卡
+146     <div id="history"> 每轮迭代卡片挂载点
+149     <div id="reflPanel"> 反思面板(需反思时显示)
+167  <script>
+168     const $ = id => document.getElementById(id);
+190     async function callRun(reflection){ fetch('/api/run', POST JSON) -> renderResult }
+203     function renderResult(data){ 更新指标卡 + 渲染 history 卡片 }
+240     function flowNodes(h){ 根据测试/语法结果决定流程节点 状态(ok/bad/act) }
+254     function callTrace(call){ 渲染"发送给模型的 Prompt"与"模型返回" }
+263     function appendRound(h, n){ 渲染单轮卡片: 流程节点 + 耗时 + ISSUES/TESTS/建议/反思 + API详情按钮 }
+307     function block(lab, content, dark){ 生成带标签的 <pre> 块 }
+319     $('runBtn').onclick = ...   // 取输入 -> callRun('')
+325     $('sampleBtn').onclick = ...// 拉 /api/sample 填入
+330     $('nextBtn').onclick = ...  // 取反思+修订代码 -> callRun(refl)
+351     window load: fetch /api/config 渲染徽标 + 拉示例</pre></details>
+  <ol class="ana">
+    <li><span class="k">CSS（第 7-84 行）</span> 用 CSS 变量统一配色；深色 <code>pre</code> 显示模型输出；<code>.node.ok/.bad/.act</code> 三种状态色表示流程节点（通过/失败/进行中）。</li>
+    <li><span class="k">输入区（第 97-119 行）</span> 两个 textarea（题述/代码）+ 迭代次数下拉 + 运行/示例/重置按钮。legend 说明 offline/api 模式区别。</li>
+    <li><span class="k">指标卡（第 124-143 行）</span> 四个卡：初始通过率、最终通过率（带进度条）、改进幅度、难度，数据来自 <code>data.metrics</code>。</li>
+    <li><span class="k">callRun（第 190 行）</span> 唯一的数据入口：POST <code>/api/run</code>，成功调 <code>renderResult</code>。带 busy 状态与计时器（api 模式显示真实耗时）。</li>
+    <li><span class="k">flowNodes / appendRound（第 240/263 行）</span> 把每轮 history 渲染成流程图节点 + 卡片，展示 ISSUES、测试执行结果、SUGGESTIONS、REFLECTIONS。<b>关键</b>：通过正则 <code>/Passed:\s*\d+,\s*Failed:\s*0/</code> 判断该轮是否通过。</li>
+    <li><span class="k">callTrace（第 254 行）</span> 渲染"API 调用详情"——把 <code>llm1_call / llm2_call</code> 里的 prompt 与 response 完整展示。这是你之前强调"证明真的调了 API"的可视化落点；offline 下会显示 model:"offline" + 0ms。</li>
+    <li><span class="k">反思面板（第 149/330 行）</span> 当 <code>data.reflection_required</code> 为真显示，学生填反思与修订代码后点"进入下一轮"再次 callRun——完成闭环。</li>
+    <li><span class="k">初始化（第 351 行）</span> load 时拉 <code>/api/config</code> 设置徽标（api 模式下显示"LLM1·已连接✓ ⇄ LLM2·已连接✓"，完全不显示 Key），并自动载入示例。</li>
+  </ol>
+  <div class="warnbox">安全回顾：前端所有 Key 相关展示都来自 <code>config.py</code> 的布尔/掩码字段；<code>/api/config</code> 与 <code>/api/run</code> 从不返回完整 Key，因此网页端零密钥泄露（这是你之前多次要求的结果）。</div>
+</section>
+
+<!-- ===================== run_experiment.py ===================== -->
+<section id="run_exp">
+  <h2 class="id">12. test/run_experiment.py <span class="filetag">实验 v1 · 221 行</span></h2>
+  <p class="role">职责：把系统当"教学有效性测量仪"，量化缺陷检出率与通过率提升（lift）。</p>
+  <details><summary>展开 run_experiment.py</summary><pre>46  def evaluate_offline(code, problem_desc):
+48      backend = RuleEngineBackend()
+49      out = backend.llm1_text(code, problem_desc)
+51      issues, tests = parsers.parse_llm1_output(out)
+54      res = utils.run_unittest(code, tests)
+55      return {pass_rate, passed, n_tests, n_issues, summary}
+73  def run_offline(problems):        # 缺陷检出率基线
+78      ref = evaluate_offline(p["reference"], ...)   # 参考解应通过
+82      for v in p["buggy"]:
+83          ev = evaluate_offline(v["code"], ...)
+84          caught = not ev["passed"]                  # bug 被测试抓住=未通过
+95          catch_rate = sum(caught)/len(variants)
+103     overall = sum(caught_flags)/len(caught_flags)
+106     return {"per_problem":..., "overall_catch_rate":overall}
+109 def fixer_api(buggy_code, problem_desc, issues_text, failures_text):
+112     config.BACKEND_MODE = "api"
+114     llm_backends._backend_instance = None
+115     backend = get_backend()                        # APIBackend
+116     _, llm2 = config._ensure_llms()
+126     resp = llm2.invoke([HumanMessage(content=prompt)]).content
+131 def run_lift(problems):           # 接真实 DeepSeek 测提升
+136     before = evaluate_offline(v["code"], ...)
+142     llm1_out = backend.llm1_text(...)              # 真实出题
+143     sug_out = backend.llm2_text(..., llm1_out, "") # 真实建议
+144     suggestions, failures = parsers.parse_llm2_output(sug_out)
+145     fixed = fixer_api(v["code"], ..., suggestions, failures)  # 真实修复
+149     after = evaluate_offline(fixed, ...)
+150     lift = after["pass_rate"] - before["pass_rate"]
+170 def main(): --mode offline|lift|both, 写 test/runs/<ts>.json 与 test/metrics/summary.json</pre></details>
+  <ol class="ana">
+    <li><span class="k">evaluate_offline</span> 复用真实系统的组件（RuleEngineBackend 出题 + utils 判卷）产生"离线基线"指标。</li>
+    <li><span class="k">run_offline</span> 对每题：先用参考解验证"考题有效"（参考解应通过），再对每个 bug 变体判断 <code>caught = not passed</code>——bug 被测试抓到 ⇔ 学生代码未通过。汇总得<b>缺陷检出率</b>。</li>
+    <li><span class="k">fixer_api</span> 用 LLM-2 客户端把 bug 代码改对（扮演"接受建议后动手修的学生"），仅用于测量提升、不进生产代码。</li>
+    <li><span class="k">run_lift</span> 接真实 DeepSeek：对每 bug 变体算 before（离线通过率）→ 真实出题+建议 → fixer 修复 → after，得 <code>lift = after - before</code>，平均即"系统提升"。</li>
+    <li><span class="k">main</span> 支持 <code>--mode offline/lift/both</code>，结果写 <code>test/runs/</code>（原始）与 <code>test/metrics/summary.json</code>（汇总）。</li>
+  </ol>
+</section>
+
+<!-- ===================== run_study.py ===================== -->
+<section id="run_study">
+  <h2 class="id">13. test/run_study.py <span class="filetag">实验 v2 · 381 行 · 当前主用</span></h2>
+  <p class="role">职责：4 组消融对照实验（G0 无帮助 / G1 仅测试反馈 / G2 导师建议1轮 / G3 多轮反思）+ 生成图表。上一轮已实跑得到 +36%。</p>
+  <details><summary>展开 run_study.py（核心逻辑）</summary><pre>55  def offline_eval(code, problem_desc):    # 离线判卷: RuleEngineBackend 出题 + utils 判卷
+58      backend = RuleEngineBackend()
+59      out = backend.llm1_text(code, problem_desc)
+63      res = utils.run_unittest(code, tests)
+73  def _api_call_with_retry(fn, what, retries=3):  # 对 DeepSeek 做重试(应对5xx/限流)
+82      if "402" in msg or "Insufficient Balance": raise   # 余额不足不重试
+91  def fix_with_api(buggy_code, problem_desc, suggestions, failures, with_suggestions=True):
+95      config.BACKEND_MODE = "api"
+98      get_backend(); _, llm2 = config._ensure_llms()
+99      if with_suggestions:
+102         role = "You are a student who received tutor feedback... Fix the bugs."
+106     else:
+108         role = "You are a student debugging... NOT given any tutor advice."
+122     def _call(): return llm2.invoke([HumanMessage(content=prompt)]).content
+125     resp = _api_call_with_retry(_call, "修复调用")
+133  def _run_rounds(code0, desc, backend, with_suggestions, max_rounds):
+135      cur = code0
+136      ev0 = offline_eval(cur, desc); traj=[ev0["pass_rate"]]
+140      for r in range(1, max_rounds+1):
+141          if cur_pass >= 1.0: traj.append(1.0); continue
+144          ev = offline_eval(cur, desc)
+145          failures_text = ev["failures"][:2000]
+146          if with_suggestions:
+147              llm2_out = backend.llm2_text(cur, desc, "", failures_text)
+150              suggestions,_ = parsers.parse_llm2_output(llm2_out)
+152          else: suggestions = ""
+153          fixed = fix_with_api(cur, desc, suggestions, failures_text, with_suggestions)
+176  def run_study(problems, max_rounds):
+187      for p in problems:
+189          for v in p["buggy"]:
+191              base = offline_eval(v["code"], desc)
+192              is_caught = not base["passed"]
+199              g0 = base["pass_rate"]                       # 对照组
+201              g1_traj = _run_rounds(..., False, 1)         # 仅测试反馈,1轮
+205              g2_traj = _run_rounds(..., True, 1)          # 导师建议,1轮
+209              g3_traj = _run_rounds(..., True, max_rounds) # 导师+多轮,≤3轮
+249  def write_outputs(out, stamp): 写 runs/study_<ts>.json + metrics/summary_study.json + study_results.csv
+280  def build_chart(out, path):    # matplotlib 画柱状图(各组合并通过率)+折线图(逐样本轨迹)
+345  def main(): 解析参数 -> 校验 Key -> run_study -> write_outputs -> build_chart</pre></details>
+  <ol class="ana">
+    <li><span class="k">offline_eval</span> 与 run_experiment 的同源：用 RuleEngineBackend 生成测试 + utils 判卷，返回通过率与失败文本。<b>它是"考官判卷"的统一入口，4 组都用它打分</b>。</li>
+    <li><span class="k">fix_with_api</span> <b>实验的关键创新</b>：让 DeepSeek 扮演"学生"。<code>with_suggestions</code> 控制是否把导师建议拼进 prompt——G1 传 False（学生只能看失败用例自己改），G2/G3 传 True（加导师建议）。这正是实验要隔离的变量。</li>
+    <li><span class="k">_api_call_with_retry</span> 对真实 API 做最多 3 次重试，但 402（余额）/401（Key 无效）直接抛——与 APIBackend._invoke 的容错哲学一致。</li>
+    <li><span class="k">_run_rounds</span> 跑最多 max_rounds 轮修复，记录每轮通过率（traj）。G1/G2 传 max_rounds=1（测"一次成功率"），G3 传 3（测系统上限）。</li>
+    <li><span class="k">run_study</span> 核心循环：每 bug 样本算 G0（原始）/G1/G2/G3，累计缺陷检出率（is_caught），返回各组和通过率与 lift。</li>
+    <li><span class="k">build_chart</span> 用 matplotlib 画左柱状图（各组平均通过率）+ 右折线图（逐样本轨迹），保存为 <code>experiment_chart.png</code>。英文标签避免中文方块（DA 环境缺中文字体）。</li>
+    <li><span class="k">main</span> 校验两个 Key 不是占位符后才跑，结果写入 <code>test/metrics/</code> 与 <code>test/runs/</code>。</li>
+  </ol>
+  <div class="note">实验结论回顾（已实跑）：缺陷检出率 62%，G0 64% → G1 88% → G2 100% → G3 100%，整体提升 <b>+36%</b>。LCS 的 <code>no_diagonal_add</code> 在 G1 跌到 0%（仅看测试改错），G2 一次 100%——直观证明导师建议价值。</div>
+</section>
+
+<div class="note" style="margin-top:30px">
+  📌 <b>一句话串起全部代码</b>：<code>config</code> 决定用谁（offline/api）+ 双 Key → <code>llm_backends</code> 提供"出题/建议"两种能力（真实 DeepSeek 或离线规则引擎）→ <code>prompts</code> 定义两套角色提示词 → <code>llms</code> 把调用转给 backend → <code>utils</code> 确定性判卷、<code>parsers</code> 稳健解析、<code>metrics</code> 记指标 → <code>pipeline</code> 把以上串成"出题→判卷→(失败)建议→强制反思"闭环 → <code>main</code>/<code>web/app.py</code>+<code>index.html</code> 提供 CLI/网页入口 → <code>test/run_experiment.py</code> 与 <code>test/run_study.py</code> 把系统当测量仪做对照实验。
+</div>
+
+</div>
+</body>
+</html>
